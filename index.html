@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Blue Billboard - Billboard Catcher</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Segoe UI', Arial, sans-serif;
+    overflow: hidden;
+    background: #000;
+    touch-action: manipulation;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  /* Camera background */
+  #camera {
+    position: fixed; top: 0; left: 0;
+    width: 100%; height: 100%;
+    object-fit: cover;
+    z-index: 0;
+  }
+  #camera.hidden { display: none; }
+
+  /* Fallback gradient when no camera */
+  .fallback-bg {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    z-index: 0;
+    background: linear-gradient(135deg, #001a33 0%, #003d7a 50%, #001a33 100%);
+  }
+  .fallback-bg.hidden { display: none; }
+
+  /* Game canvas overlay */
+  #game {
+    position: fixed; top: 0; left: 0;
+    width: 100%; height: 100%;
+    z-index: 1;
+  }
+
+  /* HUD */
+  #hud {
+    position: fixed; top: 0; left: 0; right: 0;
+    z-index: 2;
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 16px 20px;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.6), transparent);
+    color: #fff;
+    font-size: 18px; font-weight: 700;
+  }
+  #hud.hidden { display: none; }
+  #hud .logo { font-size: 14px; letter-spacing: 2px; text-transform: uppercase; color: #2ea3f2; }
+  #hud .score-display { font-size: 28px; color: #fff; }
+  #hud .timer { font-size: 20px; color: #ff5a4d; }
+
+  /* Overlay screens (start, end) */
+  .overlay {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    z-index: 10;
+    display: flex; flex-direction: column;
+    justify-content: center; align-items: center;
+    background: rgba(0, 20, 50, 0.92);
+    color: #fff; text-align: center;
+    padding: 30px;
+  }
+  .overlay.hidden { display: none; }
+
+  .overlay h1 {
+    font-size: 32px; text-transform: uppercase;
+    letter-spacing: 3px; margin-bottom: 8px;
+    color: #2ea3f2;
+  }
+  .overlay h2 {
+    font-size: 22px; font-weight: 400;
+    margin-bottom: 30px; color: #d9d9d9;
+  }
+  .overlay .final-score {
+    font-size: 72px; font-weight: 900;
+    color: #297ff0; margin: 10px 0;
+  }
+  .overlay .final-label {
+    font-size: 16px; color: #d9d9d9;
+    text-transform: uppercase; letter-spacing: 2px;
+  }
+
+  .btn {
+    display: inline-block;
+    padding: 16px 48px;
+    font-size: 18px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 2px;
+    color: #fff;
+    background: #003d7a;
+    border: none; border-radius: 50px;
+    cursor: pointer;
+    margin-top: 30px;
+    transition: background 0.2s;
+  }
+  .btn:active { background: #297ff0; }
+
+  .powered-by {
+    position: fixed; bottom: 16px; left: 0; right: 0;
+    text-align: center;
+    font-size: 11px; color: rgba(255,255,255,0.4);
+    letter-spacing: 1px; text-transform: uppercase;
+    z-index: 3;
+  }
+
+  /* Tap feedback animation */
+  .tap-effect {
+    position: fixed;
+    pointer-events: none;
+    z-index: 5;
+    font-size: 24px; font-weight: 900;
+    color: #2ea3f2;
+    animation: tapPop 0.6s ease-out forwards;
+  }
+  @keyframes tapPop {
+    0%   { opacity: 1; transform: translateY(0) scale(1); }
+    100% { opacity: 0; transform: translateY(-60px) scale(1.5); }
+  }
+
+  /* Combo display */
+  #combo {
+    position: fixed; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 4;
+    font-size: 40px; font-weight: 900;
+    color: #ff5a4d;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s;
+    text-shadow: 0 2px 10px rgba(0,0,0,0.5);
+  }
+  #combo.show { opacity: 1; }
+</style>
+</head>
+<body>
+
+<!-- Camera feed -->
+<video id="camera" autoplay playsinline muted></video>
+<div class="fallback-bg hidden" id="fallbackBg"></div>
+
+<!-- Game canvas -->
+<canvas id="game"></canvas>
+
+<!-- HUD -->
+<div id="hud" class="hidden">
+  <div>
+    <div class="logo">Blue Billboard</div>
+  </div>
+  <div class="score-display">
+    <span id="scoreDisplay">0</span>
+  </div>
+  <div class="timer" id="timerDisplay">30</div>
+</div>
+
+<!-- Combo text -->
+<div id="combo"></div>
+
+<!-- Start screen -->
+<div class="overlay" id="startScreen">
+  <h1>Billboard Catcher</h1>
+  <h2>Tap the falling billboards to score!</h2>
+  <button class="btn" id="startBtn">Play</button>
+</div>
+
+<!-- End screen -->
+<div class="overlay hidden" id="endScreen">
+  <h1>Time's Up!</h1>
+  <div class="final-label">Your Score</div>
+  <div class="final-score" id="finalScore">0</div>
+  <button class="btn" id="restartBtn">Play Again</button>
+</div>
+
+<div class="powered-by">Powered by Blue Billboard</div>
+
+<script>
+// ─── CONFIG ───────────────────────────────────────
+const GAME_DURATION   = 30;
+const INITIAL_SPAWN   = 1200;
+const MIN_SPAWN       = 400;
+const FALL_SPEED_MIN  = 2;
+const FALL_SPEED_MAX  = 4.5;
+const BILLBOARD_W     = 70;
+const BILLBOARD_H     = 50;
+const COLORS = ['#003d7a','#297ff0','#2ea3f2'];
+
+// ─── STATE ────────────────────────────────────────
+let score = 0;
+let combo = 0;
+let timeLeft = GAME_DURATION;
+let billboards = [];
+let running = false;
+let spawnInterval = INITIAL_SPAWN;
+let lastSpawn = 0;
+let animFrame;
+let timerInterval;
+
+// ─── ELEMENTS ─────────────────────────────────────
+const camera       = document.getElementById('camera');
+const fallbackBg   = document.getElementById('fallbackBg');
+const canvas       = document.getElementById('game');
+const ctx          = canvas.getContext('2d');
+const hud          = document.getElementById('hud');
+const scoreEl      = document.getElementById('scoreDisplay');
+const timerEl      = document.getElementById('timerDisplay');
+const comboEl      = document.getElementById('combo');
+const startScreen  = document.getElementById('startScreen');
+const endScreen    = document.getElementById('endScreen');
+const finalScoreEl = document.getElementById('finalScore');
+
+// ─── CAMERA ───────────────────────────────────────
+async function initCamera() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment' }, audio: false
+    });
+    camera.srcObject = stream;
+  } catch (e) {
+    camera.classList.add('hidden');
+    fallbackBg.classList.remove('hidden');
+  }
+}
+
+// ─── CANVAS RESIZE ────────────────────────────────
+function resize() {
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ─── SPAWN BILLBOARD ──────────────────────────────
+function spawnBillboard() {
+  var w = BILLBOARD_W + Math.random() * 30;
+  var h = BILLBOARD_H + Math.random() * 15;
+  var isGold = Math.random() < 0.08;
+  billboards.push({
+    x: Math.random() * (canvas.width - w),
+    y: -h - 20,
+    w: w, h: h,
+    speed: FALL_SPEED_MIN + Math.random() * (FALL_SPEED_MAX - FALL_SPEED_MIN),
+    color: isGold ? '#ffc107' : COLORS[Math.floor(Math.random() * COLORS.length)],
+    gold: isGold,
+    rotation: (Math.random() - 0.5) * 0.3
+  });
+}
+
+// ─── DRAW BILLBOARD ───────────────────────────────
+function drawBillboard(b) {
+  ctx.save();
+  ctx.translate(b.x + b.w / 2, b.y + b.h / 2);
+  ctx.rotate(b.rotation);
+
+  // Shadow
+  ctx.shadowColor = 'rgba(0,0,0,0.3)';
+  ctx.shadowBlur = 12;
+  ctx.shadowOffsetY = 4;
+
+  // Rounded rectangle body
+  var r = 8;
+  var x = -b.w / 2;
+  var y = -b.h / 2;
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + b.w - r, y);
+  ctx.quadraticCurveTo(x + b.w, y, x + b.w, y + r);
+  ctx.lineTo(x + b.w, y + b.h - r);
+  ctx.quadraticCurveTo(x + b.w, y + b.h, x + b.w - r, y + b.h);
+  ctx.lineTo(x + r, y + b.h);
+  ctx.quadraticCurveTo(x, y + b.h, x, y + b.h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+
+  ctx.fillStyle = b.color;
+  ctx.fill();
+
+  // Shine effect
+  ctx.shadowColor = 'transparent';
+  var gradient = ctx.createLinearGradient(x, y, x + b.w, y + b.h);
+  gradient.addColorStop(0, 'rgba(255,255,255,0.25)');
+  gradient.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = gradient;
+  ctx.fill();
+
+  // Border
+  ctx.strokeStyle = b.gold ? '#fff' : 'rgba(255,255,255,0.3)';
+  ctx.lineWidth = b.gold ? 2.5 : 1.5;
+  ctx.stroke();
+
+  // Label text
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold ' + (b.gold ? 11 : 9) + 'px Arial';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(b.gold ? 'GOLD' : 'BB', 0, 0);
+
+  // Pole + base
+  ctx.shadowColor = 'transparent';
+  ctx.fillStyle = b.color;
+  ctx.fillRect(-3, b.h / 2, 6, 12);
+  ctx.fillRect(-12, b.h / 2 + 10, 24, 4);
+
+  ctx.restore();
+}
+
+// ─── TAP FEEDBACK ─────────────────────────────────
+function showTapEffect(x, y, points) {
+  var el = document.createElement('div');
+  el.className = 'tap-effect';
+  el.textContent = '+' + points;
+  el.style.left = x + 'px';
+  el.style.top = y + 'px';
+  document.body.appendChild(el);
+  setTimeout(function() { el.remove(); }, 600);
+}
+
+function updateCombo() {
+  if (combo >= 3) {
+    comboEl.textContent = combo + 'x COMBO!';
+    comboEl.classList.add('show');
+  } else {
+    comboEl.classList.remove('show');
+  }
+}
+
+// ─── TAP HANDLER ──────────────────────────────────
+function handleTap(e) {
+  if (!running) return;
+  e.preventDefault();
+
+  var touches = e.changedTouches ? e.changedTouches : [e];
+  for (var t = 0; t < touches.length; t++) {
+    var tx = touches[t].clientX || touches[t].pageX;
+    var ty = touches[t].clientY || touches[t].pageY;
+
+    var hit = false;
+    for (var i = billboards.length - 1; i >= 0; i--) {
+      var b = billboards[i];
+      var pad = 15;
+      if (tx >= b.x - pad && tx <= b.x + b.w + pad &&
+          ty >= b.y - pad && ty <= b.y + b.h + pad) {
+        combo++;
+        var multiplier = Math.min(combo, 5);
+        var points = b.gold ? 5 * multiplier : 1 * multiplier;
+        score += points;
+        scoreEl.textContent = score;
+        showTapEffect(tx, ty, points);
+        updateCombo();
+        billboards.splice(i, 1);
+        if (navigator.vibrate) navigator.vibrate(30);
+        hit = true;
+        break;
+      }
+    }
+    if (!hit) {
+      combo = 0;
+      updateCombo();
+    }
+  }
+}
+
+canvas.addEventListener('touchstart', handleTap, { passive: false });
+canvas.addEventListener('click', handleTap);
+
+// ─── GAME LOOP ────────────────────────────────────
+function gameLoop(timestamp) {
+  if (!running) return;
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Spawn new billboards
+  if (timestamp - lastSpawn > spawnInterval) {
+    spawnBillboard();
+    lastSpawn = timestamp;
+    var elapsed = GAME_DURATION - timeLeft;
+    var progress = elapsed / GAME_DURATION;
+    spawnInterval = INITIAL_SPAWN - (INITIAL_SPAWN - MIN_SPAWN) * progress;
+  }
+
+  // Update and draw
+  for (var i = billboards.length - 1; i >= 0; i--) {
+    var b = billboards[i];
+    b.y += b.speed;
+    if (b.y > canvas.height + 20) {
+      billboards.splice(i, 1);
+      combo = 0;
+      updateCombo();
+      continue;
+    }
+    drawBillboard(b);
+  }
+
+  animFrame = requestAnimationFrame(gameLoop);
+}
+
+// ─── START / END ──────────────────────────────────
+function startGame() {
+  score = 0;
+  combo = 0;
+  timeLeft = GAME_DURATION;
+  billboards = [];
+  spawnInterval = INITIAL_SPAWN;
+  lastSpawn = 0;
+  scoreEl.textContent = '0';
+  timerEl.textContent = timeLeft;
+  comboEl.classList.remove('show');
+
+  startScreen.classList.add('hidden');
+  endScreen.classList.add('hidden');
+  hud.classList.remove('hidden');
+  running = true;
+
+  timerInterval = setInterval(function() {
+    timeLeft--;
+    timerEl.textContent = timeLeft;
+    if (timeLeft <= 0) endGame();
+  }, 1000);
+
+  animFrame = requestAnimationFrame(gameLoop);
+}
+
+function endGame() {
+  running = false;
+  clearInterval(timerInterval);
+  cancelAnimationFrame(animFrame);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  hud.classList.add('hidden');
+  finalScoreEl.textContent = score;
+  endScreen.classList.remove('hidden');
+}
+
+// ─── BUTTONS ──────────────────────────────────────
+document.getElementById('startBtn').addEventListener('click', startGame);
+document.getElementById('restartBtn').addEventListener('click', startGame);
+
+// ─── INIT ─────────────────────────────────────────
+initCamera();
+</script>
+
+</body>
+</html>
