@@ -162,7 +162,7 @@
 <!-- Start screen -->
 <div class="overlay" id="startScreen">
   <h1>Billboard Catcher</h1>
-  <h2>Tap the falling billboards to score!</h2>
+  <h2>Tap the blue billboards to score!<br><span style="color:#ff5a4d;">Avoid the red ones!</span></h2>
   <button class="btn" id="startBtn">Play</button>
 </div>
 
@@ -179,13 +179,15 @@
 <script>
 // ─── CONFIG ───────────────────────────────────────
 const GAME_DURATION   = 30;
-const INITIAL_SPAWN   = 1200;
-const MIN_SPAWN       = 400;
-const FALL_SPEED_MIN  = 2;
-const FALL_SPEED_MAX  = 4.5;
+const INITIAL_SPAWN   = 900;         // more billboards from the start
+const MIN_SPAWN       = 250;         // gets very busy at the end
+const FALL_SPEED_MIN  = 3;           // faster falling
+const FALL_SPEED_MAX  = 7;           // much faster max
 const BILLBOARD_W     = 70;
 const BILLBOARD_H     = 50;
+const SHRINK_RATE     = 0.015;       // billboards shrink as they fall
 const COLORS = ['#003d7a','#297ff0','#2ea3f2'];
+const DECOY_COLOR     = '#ff5a4d';   // red decoys — lose points!
 
 // ─── STATE ────────────────────────────────────────
 let score = 0;
@@ -237,13 +239,18 @@ function spawnBillboard() {
   var w = BILLBOARD_W + Math.random() * 30;
   var h = BILLBOARD_H + Math.random() * 15;
   var isGold = Math.random() < 0.08;
+  // Decoys get more common as time goes on
+  var elapsed = GAME_DURATION - timeLeft;
+  var decoyChance = 0.1 + (elapsed / GAME_DURATION) * 0.25; // 10% → 35%
+  var isDecoy = !isGold && Math.random() < decoyChance;
   billboards.push({
     x: Math.random() * (canvas.width - w),
     y: -h - 20,
     w: w, h: h,
     speed: FALL_SPEED_MIN + Math.random() * (FALL_SPEED_MAX - FALL_SPEED_MIN),
-    color: isGold ? '#ffc107' : COLORS[Math.floor(Math.random() * COLORS.length)],
+    color: isDecoy ? DECOY_COLOR : (isGold ? '#ffc107' : COLORS[Math.floor(Math.random() * COLORS.length)]),
     gold: isGold,
+    decoy: isDecoy,
     rotation: (Math.random() - 0.5) * 0.3
   });
 }
@@ -287,16 +294,17 @@ function drawBillboard(b) {
   ctx.fill();
 
   // Border
-  ctx.strokeStyle = b.gold ? '#fff' : 'rgba(255,255,255,0.3)';
-  ctx.lineWidth = b.gold ? 2.5 : 1.5;
+  ctx.strokeStyle = (b.gold || b.decoy) ? '#fff' : 'rgba(255,255,255,0.3)';
+  ctx.lineWidth = (b.gold || b.decoy) ? 2.5 : 1.5;
   ctx.stroke();
 
   // Label text
   ctx.fillStyle = '#fff';
-  ctx.font = 'bold ' + (b.gold ? 11 : 9) + 'px Arial';
+  var label = b.decoy ? 'X' : (b.gold ? 'GOLD' : 'BB');
+  ctx.font = 'bold ' + (b.gold ? 11 : (b.decoy ? 14 : 9)) + 'px Arial';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(b.gold ? 'GOLD' : 'BB', 0, 0);
+  ctx.fillText(label, 0, 0);
 
   // Pole + base
   ctx.shadowColor = 'transparent';
@@ -311,7 +319,12 @@ function drawBillboard(b) {
 function showTapEffect(x, y, points) {
   var el = document.createElement('div');
   el.className = 'tap-effect';
-  el.textContent = '+' + points;
+  if (points < 0) {
+    el.textContent = points;
+    el.style.color = '#ff5a4d';
+  } else {
+    el.textContent = '+' + points;
+  }
   el.style.left = x + 'px';
   el.style.top = y + 'px';
   document.body.appendChild(el);
@@ -343,15 +356,26 @@ function handleTap(e) {
       var pad = 15;
       if (tx >= b.x - pad && tx <= b.x + b.w + pad &&
           ty >= b.y - pad && ty <= b.y + b.h + pad) {
-        combo++;
-        var multiplier = Math.min(combo, 5);
-        var points = b.gold ? 5 * multiplier : 1 * multiplier;
-        score += points;
-        scoreEl.textContent = score;
-        showTapEffect(tx, ty, points);
-        updateCombo();
+        if (b.decoy) {
+          // Hit a decoy — lose points and combo!
+          var penalty = 3;
+          score = Math.max(0, score - penalty);
+          combo = 0;
+          scoreEl.textContent = score;
+          showTapEffect(tx, ty, -penalty);
+          updateCombo();
+          if (navigator.vibrate) navigator.vibrate([50, 30, 50]);
+        } else {
+          combo++;
+          var multiplier = Math.min(combo, 5);
+          var points = b.gold ? 5 * multiplier : 1 * multiplier;
+          score += points;
+          scoreEl.textContent = score;
+          showTapEffect(tx, ty, points);
+          updateCombo();
+          if (navigator.vibrate) navigator.vibrate(30);
+        }
         billboards.splice(i, 1);
-        if (navigator.vibrate) navigator.vibrate(30);
         hit = true;
         break;
       }
@@ -385,6 +409,9 @@ function gameLoop(timestamp) {
   for (var i = billboards.length - 1; i >= 0; i--) {
     var b = billboards[i];
     b.y += b.speed;
+    // Shrink as they fall
+    b.w = Math.max(20, b.w - SHRINK_RATE * b.w * 0.02);
+    b.h = Math.max(14, b.h - SHRINK_RATE * b.h * 0.02);
     if (b.y > canvas.height + 20) {
       billboards.splice(i, 1);
       combo = 0;
