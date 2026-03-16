@@ -51,7 +51,8 @@
     font-size: 18px; font-weight: 700;
   }
   #hud.hidden { display: none; }
-  #hud .logo { font-size: 14px; letter-spacing: 2px; text-transform: uppercase; color: #2ea3f2; }
+  #hud .logo { display: flex; align-items: center; gap: 8px; }
+  #hud .logo img { height: 24px; }
   #hud .score-display { font-size: 28px; color: #fff; }
   #hud .timer { font-size: 20px; color: #ff5a4d; }
 
@@ -67,6 +68,9 @@
   }
   .overlay.hidden { display: none; }
 
+  .overlay .logo-img {
+    width: 180px; margin-bottom: 24px;
+  }
   .overlay h1 {
     font-size: 32px; text-transform: uppercase;
     letter-spacing: 3px; margin-bottom: 8px;
@@ -148,7 +152,7 @@
 <!-- HUD -->
 <div id="hud" class="hidden">
   <div>
-    <div class="logo">Blue Billboard</div>
+    <div class="logo"><img src="logo.png" alt="Blue Billboard"></div>
   </div>
   <div class="score-display">
     <span id="scoreDisplay">0</span>
@@ -161,6 +165,7 @@
 
 <!-- Start screen -->
 <div class="overlay" id="startScreen">
+  <img src="logo.png" alt="Blue Billboard" class="logo-img">
   <h1>Billboard Catcher</h1>
   <h2>Tap the blue billboards to score!<br><span style="color:#ff5a4d;">Avoid the red ones!</span></h2>
   <button class="btn" id="startBtn">Play</button>
@@ -168,6 +173,7 @@
 
 <!-- End screen -->
 <div class="overlay hidden" id="endScreen">
+  <img src="logo.png" alt="Blue Billboard" class="logo-img">
   <h1>Time's Up!</h1>
   <div class="final-label">Your Score</div>
   <div class="final-score" id="finalScore">0</div>
